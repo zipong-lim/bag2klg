@@ -16,3 +16,7 @@ Quick and dirty implementation for .bag to .klg conversion.
 > 6) put .bag file in ./build
 > 7) run ./bag2klg
 > 8) output.klg will be located in ./build
+
+#### TODO
+> currently using frame number as timestamp
+> unable to get timestamp directly from frames using librealsense
