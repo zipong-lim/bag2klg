@@ -10,7 +10,7 @@ Quick and dirty implementation for .bag to .klg conversion.
 > 1) mkdir build
 > 2) cd build
 > 3) cmake ..
-> 4) add line to end of ./build/CMakeFiles/bag2klg.dir/link.txt
+> 4) add line to end of ./build/CMakeFiles/bag2klg.dir/link.txt   
 > **-lGL -lGLU -lglut** 
 > 5) make
 > 6) put .bag file in ./build
