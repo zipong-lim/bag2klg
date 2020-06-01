@@ -18,6 +18,6 @@ Quick and dirty implementation for .bag to .klg conversion.
 > 8) output.klg will be located in ./build    
 
 #### parameter control
-> DISPLAY_MODE = 0 (no display) | = 1 (show display)
-> WRITE_MODE = 0 (no save to .klg) | = 1 (save to .klg)
-> OVERRIDE_TIMESTAMP = 0 (use original timestamp from .bag file) | = 1 (use manual timestamp for new fps)
+> DISPLAY_MODE = 0 (no display) | = 1 (show display)   
+> WRITE_MODE = 0 (no save to .klg) | = 1 (save to .klg)   
+> OVERRIDE_TIMESTAMP = 0 (use original timestamp from .bag file) | = 1 (use manual timestamp for new fps)   
