@@ -9,6 +9,9 @@
 #include <functional>
 #include <fstream>
 
+#include <chrono>
+#include <thread>
+
 #include "GL/glut.h"
 #include "GL/freeglut.h"
 
@@ -18,13 +21,17 @@ const static int depthWidth = 640;
 const static int depthHeight = 480;
 const static int rgbWidth = 640;
 const static int rgbHeight = 480;
+const static int overrideFps = 30;
 
 const static int DISPLAY_MODE = 1;
 const static int WRITE_MODE = 1;
+const static int OVERRIDE_TIMESTAMP = 0;
 
-const static std::string fileName = "20200518_160049.bag";
+const static std::string fileName = "skateboard_640x480.bag";
 
 int main(int argc,char *argv[]){
+	using namespace std::this_thread;
+	using namespace std::chrono;
 
 	// load .bag file
 	rs2::config cfg;
@@ -69,64 +76,81 @@ int main(int argc,char *argv[]){
 	const void *depthData;
 	int32_t rgbSize = rgbWidth * rgbHeight * 3 * sizeof(uint8_t);
 	const void *rgbData;
+	int64_t timestamp;
 	int64_t currTimestamp;
 	rs2::align align(RS2_STREAM_COLOR);
 	rs2::frameset fs;
-	while(pipe.poll_for_frames(&fs)) {
-		// TODO: fix timestamp
-		// double timestamp = fs.get_color_frame().get_timestamp();
-		std::cout << "timestamp:" << nFrames << std::endl;
-		
-		// align frames
-		auto aligned_fs = align.process(fs);
+	int overrideFps = 30;
+	int delay = 1000 / overrideFps;
 
-		// get rgb and depth frames into buffer
-		// auto color_frame = fs.get_color_frame();
-		auto color_frame = aligned_fs.get_color_frame();
-		memcpy(rgbBuffer.first, color_frame.get_data(), color_frame.get_width() * color_frame.get_height() * 3);
-		// TODO: fix timestamp
-		// rgbBuffer.second = timestamp;
-		rgbBuffer.second = nFrames;
+	try {
+		while (fs = pipe.wait_for_frames()) {
+			
+			if (OVERRIDE_TIMESTAMP) {
+				// manual timestamp
+				timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() % 1000000;
+				std::cout << "timestamp:" << timestamp << std::endl;
+			} else {
+				// read timestamp from .bag file
+				timestamp = fs.get_color_frame().get_timestamp();
+				timestamp = timestamp % 1000000;
+			}
+			std::cout << "timestamp:" << timestamp << std::endl;
 
-		// auto depth_frame = fs.get_depth_frame();
-		auto depth_frame = aligned_fs.get_depth_frame();
-		memcpy(frameBuffer.first.first,depth_frame.get_data(), depth_frame.get_width() * depth_frame.get_height() * 2);
-		memcpy(frameBuffer.first.second,rgbBuffer.first, rgbWidth * rgbHeight * 3);
-		// TODO: fix timestamp
-		// frameBuffer.second = timestamp;
-		frameBuffer.second = nFrames;
+			// align frames
+			auto aligned_fs = align.process(fs);
 
-		void *depthData = frameBuffer.first.first;
-		void *rgbData = frameBuffer.first.second;
-		
-		// display recording
-		if (DISPLAY_MODE) {
-			glClear(GL_COLOR_BUFFER_BIT);
-			glPixelZoom(1,-1);
+			// get rgb and depth frames into buffer
+			// auto color_frame = fs.get_color_frame();
+			auto color_frame = aligned_fs.get_color_frame();
+			memcpy(rgbBuffer.first, color_frame.get_data(), color_frame.get_width() * color_frame.get_height() * 3);
+			rgbBuffer.second = timestamp;
 
-			glRasterPos2f(-1,1);
-			glPixelTransferf(GL_RED_SCALE,0xFFFF * depthScale / 3.0f);
-			glDrawPixels(depthWidth,depthHeight,GL_RED,GL_UNSIGNED_SHORT,depthData);
-			glPixelTransferf(GL_RED_SCALE,1.0f);
+			// auto depth_frame = fs.get_depth_frame();
+			auto depth_frame = aligned_fs.get_depth_frame();
+			memcpy(frameBuffer.first.first,depth_frame.get_data(), depth_frame.get_width() * depth_frame.get_height() * 2);
+			memcpy(frameBuffer.first.second,rgbBuffer.first, rgbWidth * rgbHeight * 3);
+			frameBuffer.second = timestamp;
 
-			glRasterPos2f(0,1);
-			glDrawPixels(rgbWidth,rgbHeight,GL_RGB,GL_UNSIGNED_BYTE,rgbData);
-			glFlush(); 
+			void *depthData = frameBuffer.first.first;
+			void *rgbData = frameBuffer.first.second;
+
+			// display recording
+			if (DISPLAY_MODE) {
+				glClear(GL_COLOR_BUFFER_BIT);
+				glPixelZoom(1,-1);
+
+				glRasterPos2f(-1,1);
+				glPixelTransferf(GL_RED_SCALE,0xFFFF * depthScale / 3.0f);
+				glDrawPixels(depthWidth,depthHeight,GL_RED,GL_UNSIGNED_SHORT,depthData);
+				glPixelTransferf(GL_RED_SCALE,1.0f);
+
+				glRasterPos2f(0,1);
+				glDrawPixels(rgbWidth,rgbHeight,GL_RGB,GL_UNSIGNED_BYTE,rgbData);
+				glFlush(); 
+			}
+
+			depthData = frameBuffer.first.first;
+			rgbData = frameBuffer.first.second;
+			currTimestamp = frameBuffer.second;
+
+			// save data into .klg
+			if (WRITE_MODE) {
+				file.write((char*)&currTimestamp,sizeof(int64_t));
+				file.write((char*)&depthSize,sizeof(int32_t));
+				file.write((char*)&rgbSize,sizeof(int32_t));
+				file.write((char*)depthData,depthSize);
+				file.write((char*)rgbData,rgbSize);
+			}
+
+			nFrames++;
+			if (OVERRIDE_TIMESTAMP) sleep_for(nanoseconds(delay));
 		}
-
-		depthData = frameBuffer.first.first;
-		rgbData = frameBuffer.first.second;
-		currTimestamp = frameBuffer.second;
-
-		if (WRITE_MODE) {
-			file.write((char*)&currTimestamp,sizeof(int64_t));
-			file.write((char*)&depthSize,sizeof(int32_t));
-			file.write((char*)&rgbSize,sizeof(int32_t));
-			file.write((char*)depthData,depthSize);
-			file.write((char*)rgbData,rgbSize);
-		}
-
-		nFrames++;
+	}
+	catch (const rs2::error &e) {
+		// use this to catch end of recording.
+		// std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+		std::cout << "file ended." << std::endl;
 	}
 
 	pipe.stop();
@@ -134,5 +158,7 @@ int main(int argc,char *argv[]){
 	file.write((char*)&nFrames,sizeof(int32_t));
 	file.close();
 	file.clear();
+	std::cout << nFrames << " frames." << std::endl;
+	std::cout << "saved." << std::endl;
 
 }
